@@ -13,6 +13,8 @@
 //! load other images (`watermark`, `image`), `meta/`, `params/` and any path
 //! tricks that could make imagor read from a different bucket.
 
+use std::fmt::Write;
+
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::StatusCode;
 
@@ -50,6 +52,12 @@ pub struct ImageRequest {
 
 impl ImageRequest {
     /// `raw_path` must be the path exactly as received, not percent-decoded.
+    ///
+    /// # Errors
+    ///
+    /// Returns the status code to reject the request with: `404` for unknown
+    /// paths or invalid keys, `400` for invalid query parameters, `403` for a
+    /// missing or invalid signature and `410` for an expired private URL.
     pub fn parse(
         cfg: &Config,
         raw_path: &str,
@@ -67,7 +75,7 @@ impl ImageRequest {
             return Err(StatusCode::NOT_FOUND);
         }
 
-        let mut req = ImageRequest {
+        let mut req = Self {
             access: Access::Public,
             key: key.to_string(),
             width: None,
@@ -127,6 +135,7 @@ impl ImageRequest {
     }
 
     /// Internal imagor path, e.g. `/unsafe/fit-in/640x0/filters:format(webp)/b64:...`.
+    #[must_use]
     pub fn imagor_path(&self, cfg: &Config) -> String {
         let mut path = String::from("/unsafe/");
         if self.original {
@@ -135,7 +144,7 @@ impl ImageRequest {
         if let Some(w) = self.width {
             // Height 0 keeps the source aspect ratio; fit-in disables upscaling,
             // so a small source is returned at its own size.
-            path.push_str(&format!("fit-in/{w}x0/"));
+            let _ = write!(path, "fit-in/{w}x0/");
         }
         if let Some(format) = self.format {
             let name = match format {
@@ -144,7 +153,7 @@ impl ImageRequest {
                 Format::Jpeg => "jpeg",
                 Format::Png => "png",
             };
-            path.push_str(&format!("filters:format({name})/"));
+            let _ = write!(path, "filters:format({name})/");
         }
         let bucket = match self.access {
             Access::Public => &cfg.public_bucket,
@@ -221,7 +230,10 @@ mod tests {
     }
 
     fn private_query(key: &str, exp: u64) -> String {
-        format!("exp={exp}&sig={}", sign::sign(&cfg().secret, key, exp))
+        format!(
+            "exp={exp}&sig={}",
+            sign::sign(&cfg().secret, key, exp).unwrap()
+        )
     }
 
     fn b64(s: &str) -> String {
@@ -318,7 +330,7 @@ mod tests {
             Err(StatusCode::FORBIDDEN)
         );
         // extended expiry
-        let sig = sign::sign(&cfg().secret, "a.jpg", EXP);
+        let sig = sign::sign(&cfg().secret, "a.jpg", EXP).unwrap();
         assert_eq!(
             parse("/private/a.jpg", &format!("exp={}&sig={sig}", EXP + 1)),
             Err(StatusCode::FORBIDDEN)

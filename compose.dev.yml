@@ -1,0 +1,42 @@
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: devaccesskey
+      RUSTFS_SECRET_KEY: devsecretkey
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9100:9000" # S3 API
+      - "9101:9001" # web console
+    volumes:
+      - rustfs-data:/data
+
+  imagor:
+    image: ghcr.io/cshum/imagor:latest
+    depends_on:
+      - rustfs
+    environment:
+      PORT: 8000
+      IMAGOR_UNSAFE: "1"
+      AWS_ACCESS_KEY_ID: devaccesskey
+      AWS_SECRET_ACCESS_KEY: devsecretkey
+      AWS_REGION: us-east-1
+      S3_ENDPOINT: http://rustfs:9000
+      S3_FORCE_PATH_STYLE: "1"
+      S3_LOADER_BUCKET_ROUTER_CONFIG: /etc/imagor/buckets.yaml
+    volumes:
+      - ./dev/imagor-buckets.yaml:/etc/imagor/buckets.yaml:ro
+
+  img-proxy:
+    build: .
+    depends_on:
+      - imagor
+    environment:
+      SIGNING_SECRET: dev-signing-secret-dev-signing-secret
+      IMAGOR_URL: http://imagor:8000
+      RUST_LOG: img_proxy=debug,info
+    ports:
+      - "8080:8080"
+
+volumes:
+  rustfs-data:

@@ -120,8 +120,9 @@ pub async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Respons
         }
     }
 
-    let mut out = Response::builder().status(status);
-    let headers = out.headers_mut().expect("builder has no errors yet");
+    let mut out = Response::new(Body::empty());
+    *out.status_mut() = status;
+    let headers = out.headers_mut();
 
     // Forward the imagor headers for cache control etc...
     for name in FORWARD_RESPONSE {
@@ -146,14 +147,15 @@ pub async fn handle(State(state): State<Arc<AppState>>, req: Request) -> Respons
     if let Access::Private { exp } = image.access {
         // Never let shared caches keep private images, and never past `exp`.
         let max_age = exp.saturating_sub(now).min(state.cfg.private_max_age);
-        headers.insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_str(&format!("private, max-age={max_age}")).expect("valid header"),
-        );
+        // A formatted integer is always a valid header value; fall back to
+        // `no-store` rather than ever keeping imagor's public cache header.
+        let cache_control = HeaderValue::from_str(&format!("private, max-age={max_age}"))
+            .unwrap_or_else(|_| HeaderValue::from_static("private, no-store"));
+        headers.insert(header::CACHE_CONTROL, cache_control);
         headers.remove(header::EXPIRES);
     }
 
     // Forward the byte stream
-    out.body(Body::from_stream(resp.bytes_stream()))
-        .expect("valid response")
+    *out.body_mut() = Body::from_stream(resp.bytes_stream());
+    out
 }

@@ -7,16 +7,20 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{Router, routing::get};
 
-pub fn app(cfg: config::Config) -> Router {
+/// Builds the router with the health endpoint and the proxy handler.
+///
+/// # Errors
+///
+/// Returns an error if the HTTP client for imagor cannot be created.
+pub fn app(cfg: config::Config) -> Result<Router, reqwest::Error> {
     // The reqwest handler for the axum state
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        .build()
-        .expect("reqwest client");
+        .build()?;
 
     // Register a health endpoint and the proxy handler
-    Router::new()
+    Ok(Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .fallback(proxy::handle)
-        .with_state(Arc::new(proxy::AppState { cfg, client }))
+        .with_state(Arc::new(proxy::AppState { cfg, client })))
 }

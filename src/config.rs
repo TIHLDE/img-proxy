@@ -26,6 +26,11 @@ pub struct Config {
 
 impl Config {
     /// Parses the environment variables into the config values
+    ///
+    /// # Errors
+    ///
+    /// Returns a description of the problem if a required variable is missing
+    /// or a variable has an invalid value.
     pub fn from_env() -> Result<Self, String> {
         let secret = required("SIGNING_SECRET")?;
         if secret.len() < 32 {

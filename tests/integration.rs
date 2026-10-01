@@ -1,3 +1,8 @@
+#![allow(
+    clippy::unwrap_used,
+    reason = "test helpers outside #[test] fns are not exempted by clippy.toml"
+)]
+
 use axum::{
     Router,
     body::Body,
@@ -54,6 +59,7 @@ async fn proxy() -> Router {
         sizes: vec![320, 640],
         private_max_age: 3600,
     })
+    .unwrap()
 }
 
 async fn get(app: Router, uri: &str) -> axum::response::Response {
@@ -92,7 +98,7 @@ async fn public_image() {
 #[tokio::test]
 async fn private_image_gets_private_cache_control() {
     let exp = now() + 60;
-    let sig = sign::sign(SECRET, "a.jpg", exp);
+    let sig = sign::sign(SECRET, "a.jpg", exp).unwrap();
     let resp = get(
         proxy().await,
         &format!("/private/a.jpg?w=320&exp={exp}&sig={sig}"),
@@ -119,7 +125,7 @@ async fn rejects_non_image_content_type() {
 async fn rejection_statuses() {
     let app = proxy().await;
     let expired = now() - 1;
-    let sig = sign::sign(SECRET, "a.jpg", expired);
+    let sig = sign::sign(SECRET, "a.jpg", expired).unwrap();
     for (uri, status) in [
         ("/public/a.pdf", StatusCode::NOT_FOUND),
         ("/public/a.jpg?w=123", StatusCode::BAD_REQUEST),
